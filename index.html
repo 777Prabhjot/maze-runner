@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Hold-to-Move Tunnel Chase!</title>
+    <style>
+        /* Base styles */
+        html, body {
+            height: 100%; /* Ensure html and body take full height */
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent scrolling */
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            background-color: #f0f0f0;
+            font-family: sans-serif;
+            position: fixed; /* Still useful to prevent some scroll behaviors */
+            width: 100%;
+            box-sizing: border-box;
+            padding: 5px;
+        }
+        h1 { margin: 2px 0; color: #333; font-size: 1.2em; text-align: center;}
+        #level-indicator { margin-bottom: 3px; font-size: 0.9em; color: #555; text-align: center;}
+
+        #game-container {
+            position: relative;
+            border: 2px solid #555;
+            background-color: #ccc;
+            overflow: hidden;
+            transition: width 0.1s ease-out, height 0.1s ease-out; /* Faster transition */
+            /* Use available space, respecting padding/other elements */
+            max-width: 98vw;
+            max-height: 90vh; /* INCREASED: Allow even more vertical space */
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            /* Flexbox/Grid properties handled by body's align/justify */
+            display: flex; /* Added to help internal sizing? Maybe not needed */
+            justify-content: center; /* Center board if smaller than container */
+            align-items: center;    /* Center board if smaller than container */
+        }
+
+        #game-board {
+            display: grid;
+            /* Grid styles set by JS */
+        }
+        .cell { box-sizing: border-box; }
+        .wall { background-color: #5c3e30; }
+        .path { background-color: #e0d6c4; }
+        .tunnel { background-color: #a0c4e0; } /* Light blue */
+
+        /* Player and Food styles */
+        #player {
+            position: absolute; background-color: #777; border: 1px solid #444; border-radius: 2px; box-sizing: border-box;
+            transition: top 0.06s linear, left 0.06s linear, background-color 0.2s ease; z-index: 10;
+        }
+        #food {
+            position: absolute; background-color: #ffd700; border: 1px solid #ccac00; border-radius: 50%; box-sizing: border-box;
+            transition: top 0.08s linear, left 0.08s linear; z-index: 5;
+        }
+        #message {
+            margin-top: 8px;
+            font-size: 0.9em;
+            color: green;
+            font-weight: bold;
+            height: 1.1em;
+            text-align: center;
+            width: 100%;
+        }
+
+        /* --- Mobile Controls --- */
+        #mobile-controls {
+            position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%);
+            width: 140px; height: 140px; /* Slightly smaller than before */
+            display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr;
+            gap: 4px; z-index: 100; opacity: 0.75; display: none;
+        }
+        .mobile-btn {
+            background-color: #555; color: white; border: 1px solid #333; border-radius: 10px;
+            font-size: 1.6em; font-weight: bold; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+        }
+        #btn-up { grid-column: 2; grid-row: 1; }
+        #btn-left { grid-column: 1; grid-row: 2; }
+        #btn-right { grid-column: 3; grid-row: 2; }
+        #btn-down { grid-column: 2; grid-row: 3; }
+        .mobile-btn.active, /* Style when actively pressed */
+        .mobile-btn:active {
+            background-color: #888; transform: scale(0.95);
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Hold-to-Move Chase!</h1>
+    <div id="level-indicator">Level: 1</div>
+
+    <div id="game-container">
+        <div id="game-board"></div>
+        <div id="player"></div>
+        <div id="food"></div>
+    </div>
+
+    <div id="message">Use Arrows or Tap Controls</div>
+
+    <div id="mobile-controls">
+        <button id="btn-up" class="mobile-btn">↑</button>
+        <button id="btn-left" class="mobile-btn">←</button>
+        <button id="btn-right" class="mobile-btn">→</button>
+        <button id="btn-down" class="mobile-btn">↓</button>
+    </div>
+
+
+    <script>
+        // --- Elements ---
+        const gameBoard = document.getElementById('game-board');
+        const gameContainer = document.getElementById('game-container');
+        const playerElement = document.getElementById('player');
+        const foodElement = document.getElementById('food');
+        const messageElement = document.getElementById('message');
+        const levelIndicatorElement = document.getElementById('level-indicator');
+        const mobileControlsContainer = document.getElementById('mobile-controls');
+
+        // --- Maze Definitions (remain the same) ---
+        const levels = [ /* Maze arrays omitted for brevity - use previous version's */
+             // Level 1
+            [[0,0,0,0,0,0,0,0,0,0,0,0,0],[0,2,1,1,1,0,1,1,1,1,4,3,0],[0,1,0,0,1,0,1,0,0,0,0,1,0],[0,1,1,0,1,1,1,0,1,1,1,1,0],[0,0,1,0,1,0,0,0,1,0,0,1,0],[0,5,1,1,1,0,1,1,1,0,1,1,0],[0,1,0,0,0,0,1,0,1,0,1,0,0],[0,1,1,1,1,1,1,0,1,1,1,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,0]],
+            // Level 2
+            [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,2,1,0,1,1,1,0,4,1,0,1,1,1,0],[0,1,1,0,1,0,1,0,1,0,0,1,0,1,0],[0,0,1,0,1,0,1,1,1,0,1,1,0,6,0],[0,1,1,1,1,0,0,0,1,0,1,0,0,1,0],[0,1,0,0,1,1,1,1,1,1,1,1,1,1,0],[0,1,1,1,0,1,0,1,0,0,0,1,0,1,0],[0,0,0,1,0,1,0,5,1,1,1,1,0,1,0],[0,1,1,1,1,1,0,1,0,1,0,1,0,1,0],[0,1,0,0,0,1,1,1,0,1,0,1,1,1,0],[0,7,1,1,1,0,1,1,1,1,0,0,0,1,0],[0,0,0,0,1,0,1,0,0,1,1,1,1,3,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+            // Level 3
+            [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,1,1,0,1,1,1,4,1,1,0,1,1,1,1,0],[0,1,0,1,0,1,0,0,0,0,1,0,1,0,0,1,0],[0,1,0,1,1,1,1,1,1,0,1,1,1,1,0,1,0],[0,1,0,0,0,1,0,1,0,0,1,0,0,1,0,6,0],[0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0],[0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0],[0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0],[0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,1,0],[0,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0],[0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0],[0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,5,0],[0,0,1,0,1,0,1,0,1,0,1,0,1,0,0,1,0],[0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,0],[0,1,0,0,0,0,1,0,0,0,1,0,0,0,0,7,0],[0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,3,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+            // Level 4
+            [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,2,1,0,1,1,1,1,1,0,1,1,1,1,1,0,4,1,1,1,0],[0,1,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,1,0],[0,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,0],[0,1,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0],[0,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,0],[0,1,0,1,0,0,1,0,1,0,1,0,1,0,1,0,0,0,1,0,0],[0,1,1,1,0,1,1,0,1,0,6,0,1,1,1,0,1,1,1,0,0],[0,0,0,1,0,1,0,0,1,0,1,0,1,0,1,0,1,0,1,1,0],[0,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,0,1,0],[0,1,0,0,0,1,0,0,1,0,1,0,1,0,0,0,1,1,1,1,0],[0,1,1,1,1,1,0,1,1,1,1,0,1,1,1,0,1,0,1,0,0],[0,1,0,0,0,1,0,1,0,0,7,0,0,0,1,0,1,0,1,1,0],[0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,5,0,3,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+            // Level 5
+            [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,8,1,0],[0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0],[0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0],[0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,1,1,0],[0,4,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,0,1,0],[0,1,0,1,0,1,0,0,0,1,0,0,0,0,1,0,0,1,0,1,1,1,1,1,0],[0,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,0,0,1,0],[0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,1,1,0],[0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,6,0],[0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0],[0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0],[0,1,0,0,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0],[0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0],[0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,0,0,5,0],[0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0],[0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,7,0,0,0,1,0,1,0],[0,2,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,9],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+        ];
+
+        // --- Game Logic Variables ---
+        let CELL_SIZE = 20; // Recalculated in initGame
+        const FOOD_MOVE_INTERVAL_MS = 280;
+        const PLAYER_MOVE_INTERVAL_MS = 90; // How often player moves when button held
+
+        let currentLevelIndex = 0;
+        let playerPos = { x: 0, y: 0 };
+        let foodPos = { x: 0, y: 0 };
+        let gameWon = false;
+        let MAZE_ROWS = 0;
+        let MAZE_COLS = 0;
+        let foodMoveInterval = null;
+        let tunnelMap = new Map();
+        let playerMoveInterval = null; // Interval ID for player movement on hold
+        let activeMoveButton = null;   // Track which button is held
+
+        // --- Initialization Function ---
+        function initGame() {
+            // console.log("initGame called");
+            gameWon = false;
+            messageElement.textContent = 'Use Arrows or Tap Controls';
+            levelIndicatorElement.textContent = `Level: ${currentLevelIndex + 1}`;
+            gameBoard.innerHTML = '';
+            playerElement.style.backgroundColor = '#777';
+            if (foodMoveInterval) { clearInterval(foodMoveInterval); foodMoveInterval = null; }
+            if (playerMoveInterval) { clearInterval(playerMoveInterval); playerMoveInterval = null; } // Clear player interval too
+            activeMoveButton = null;
+            tunnelMap.clear();
+            let tunnelEndpoints = {};
+
+            const currentMaze = levels[currentLevelIndex];
+            MAZE_ROWS = currentMaze.length; MAZE_COLS = currentMaze[0].length;
+
+            // --- Dynamic Cell Size Calculation ---
+            // Use available height/width within the container
+             const containerStyle = window.getComputedStyle(gameContainer);
+             // Subtract padding/border if needed based on box-sizing
+             // Assuming border-box or 0 padding, clientWidth/Height is okay
+             const availableWidth = gameContainer.clientWidth;
+             const availableHeight = gameContainer.clientHeight;
+
+             const cellWidthMax = Math.floor(availableWidth / MAZE_COLS);
+             const cellHeightMax = Math.floor(availableHeight / MAZE_ROWS);
+
+             CELL_SIZE = Math.max(10, Math.min(cellWidthMax, cellHeightMax)); // Min 10px
+
+             // console.log(`Container: ${availableWidth}x${availableHeight}, Grid: ${MAZE_COLS}x${MAZE_ROWS}, CELL_SIZE: ${CELL_SIZE}px`);
+
+            // Setup board size based on calculated CELL_SIZE
+            const boardWidth = MAZE_COLS * CELL_SIZE;
+            const boardHeight = MAZE_ROWS * CELL_SIZE;
+            gameBoard.style.width = `${boardWidth}px`;
+            gameBoard.style.height = `${boardHeight}px`;
+            gameBoard.style.gridTemplateColumns = `repeat(${MAZE_COLS}, ${CELL_SIZE}px)`;
+            gameBoard.style.gridTemplateRows = `repeat(${MAZE_ROWS}, ${CELL_SIZE}px)`;
+
+            // Set container size precisely to fit the grid + borders
+            // gameContainer.style.width = `${boardWidth + 4}px`; // + border width * 2 (Let flexbox handle centering now)
+            // gameContainer.style.height = `${boardHeight + 4}px`; // + border width * 2
+
+            // Create cells and build tunnel map (same logic)
+             for (let y = 0; y < MAZE_ROWS; y++) {
+                for (let x = 0; x < MAZE_COLS; x++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell'); cell.style.width = `${CELL_SIZE}px`; cell.style.height = `${CELL_SIZE}px`;
+                    const cellType = currentMaze[y][x];
+                    switch (cellType) {
+                         case 0: cell.classList.add('wall'); break;
+                        case 1: cell.classList.add('path'); break;
+                        case 2: cell.classList.add('path'); playerPos = { x, y }; break;
+                        case 3: cell.classList.add('path'); foodPos = { x, y }; break;
+                        default:
+                            if (cellType >= 4) {
+                                cell.classList.add('path', 'tunnel');
+                                const pairNum = cellType % 2 === 0 ? cellType : cellType - 1;
+                                const coordString = `${x},${y}`;
+                                if (tunnelEndpoints[pairNum]) {
+                                    const startPoint = tunnelEndpoints[pairNum];
+                                    const startCoordString = `${startPoint.x},${startPoint.y}`;
+                                    tunnelMap.set(coordString, startPoint); tunnelMap.set(startCoordString, { x, y });
+                                    delete tunnelEndpoints[pairNum];
+                                } else { tunnelEndpoints[pairNum] = { x, y }; }
+                            } else { cell.classList.add('path'); }
+                            break;
+                    }
+                    gameBoard.appendChild(cell);
+                }
+            }
+             if(Object.keys(tunnelEndpoints).length > 0) { console.warn("Unpaired tunnels:", tunnelEndpoints); }
+
+            // Setup player/food elements using calculated CELL_SIZE
+            const playerSize = CELL_SIZE * 0.75; const foodSize = CELL_SIZE * 0.7;
+            setupMovableElement(playerElement, playerPos, playerSize);
+            setupMovableElement(foodElement, foodPos, foodSize);
+            foodElement.style.borderRadius = '50%';
+            updateElementPosition(playerElement, playerPos, playerSize);
+            updateElementPosition(foodElement, foodPos, foodSize);
+
+            // Start food movement
+            foodMoveInterval = setInterval(moveFood, FOOD_MOVE_INTERVAL_MS);
+        }
+
+        // --- Helper Functions (Remain the same) ---
+        function setupMovableElement(element, pos, size) { element.style.position = 'absolute'; element.style.width = `${size}px`; element.style.height = `${size}px`; }
+        function updateElementPosition(element, pos, size) { const offset = (CELL_SIZE - size) / 2; element.style.left = `${pos.x * CELL_SIZE + offset}px`; element.style.top = `${pos.y * CELL_SIZE + offset}px`; }
+        function isMoveValid(x, y) { const currentMaze = levels[currentLevelIndex]; if (x < 0 || x >= MAZE_COLS || y < 0 || y >= MAZE_ROWS) return false; const cellType = currentMaze[y][x]; return cellType !== 0; }
+        function getManhattanDistance(x1, y1, x2, y2) { return Math.abs(x1 - x2) + Math.abs(y1 - y2); }
+
+        // --- Food Movement Logic (Remains the same) ---
+        function moveFood() {
+            if (gameWon || !foodPos) return; // Added null check for foodPos just in case
+            const currentFoodX = foodPos.x; const currentFoodY = foodPos.y;
+            const currentPlayerX = playerPos.x; const currentPlayerY = playerPos.y;
+            let bestMoves = []; let maxDistance = -1;
+            const directions = [{ dx: 0, dy: -1 },{ dx: 0, dy: 1 },{ dx: -1, dy: 0 },{ dx: 1, dy: 0 }];
+            for (const dir of directions) {
+                const nextX = currentFoodX + dir.dx; const nextY = currentFoodY + dir.dy;
+                if (isMoveValid(nextX, nextY)) {
+                    let evalX = nextX; let evalY = nextY;
+                    const potentialCoordString = `${nextX},${nextY}`;
+                    if (tunnelMap.has(potentialCoordString)) {
+                        const destination = tunnelMap.get(potentialCoordString);
+                        evalX = destination.x; evalY = destination.y;
+                    }
+                    const distance = getManhattanDistance(evalX, evalY, currentPlayerX, currentPlayerY);
+                    if (distance > maxDistance) { maxDistance = distance; bestMoves = [{ x: nextX, y: nextY }]; }
+                    else if (distance === maxDistance) { bestMoves.push({ x: nextX, y: nextY }); }
+                }
+            }
+            let chosenMoveEntry = null;
+            if (bestMoves.length > 0) { chosenMoveEntry = bestMoves[Math.floor(Math.random() * bestMoves.length)]; }
+            else { return; }
+            const chosenCoordString = `${chosenMoveEntry.x},${chosenMoveEntry.y}`;
+            if (tunnelMap.has(chosenCoordString)) {
+                const destination = tunnelMap.get(chosenCoordString);
+                foodPos.x = destination.x; foodPos.y = destination.y;
+            } else { foodPos.x = chosenMoveEntry.x; foodPos.y = chosenMoveEntry.y; }
+            updateElementPosition(foodElement, foodPos, parseFloat(foodElement.style.width));
+        }
+
+        // --- Player Input Handling (Unified) ---
+        function handlePlayerInput(direction) {
+            if (gameWon || !playerPos) return; // Added null check
+            let targetX = playerPos.x; let targetY = playerPos.y; let moved = false;
+            switch (direction) {
+                case 'ArrowUp': targetY -= 1; break; case 'ArrowDown': targetY += 1; break;
+                case 'ArrowLeft': targetX -= 1; break; case 'ArrowRight': targetX += 1; break;
+                default: return;
+            }
+            if (isMoveValid(targetX, targetY)) {
+                 playerPos.x = targetX; playerPos.y = targetY;
+                 updateElementPosition(playerElement, playerPos, parseFloat(playerElement.style.width));
+                 moved = true;
+            }
+            // Check win condition immediately after move
+            if (moved && playerPos.x === foodPos.x && playerPos.y === foodPos.y) {
+                levelComplete();
+            }
+        }
+
+        // --- Level Completion (Remains the same) ---
+        function levelComplete() {
+             if(gameWon) return; // Prevent multiple calls
+             gameWon = true; messageElement.textContent = `Level ${currentLevelIndex + 1} Complete!`;
+             playerElement.style.backgroundColor = '#32cd32';
+             if (foodMoveInterval) { clearInterval(foodMoveInterval); foodMoveInterval = null; }
+             if (playerMoveInterval) { clearInterval(playerMoveInterval); playerMoveInterval = null; } // Stop player move interval
+             activeMoveButton = null;
+
+             currentLevelIndex++;
+             if (currentLevelIndex < levels.length) { setTimeout(initGame, 1500); }
+             else { messageElement.textContent = 'Tunnel Master! You Win!'; }
+        }
+
+
+        // --- Mobile Control Hold Logic ---
+        function startPlayerMove(button, direction) {
+            if (playerMoveInterval || gameWon) return; // Don't start if already moving or game over
+            activeMoveButton = button;
+            button.classList.add('active'); // Add visual feedback
+
+            handlePlayerInput(direction); // Move once immediately
+
+            playerMoveInterval = setInterval(() => {
+                handlePlayerInput(direction);
+            }, PLAYER_MOVE_INTERVAL_MS);
+        }
+
+        function stopPlayerMove() {
+            if (playerMoveInterval) {
+                clearInterval(playerMoveInterval);
+                playerMoveInterval = null;
+            }
+            if(activeMoveButton) {
+                 activeMoveButton.classList.remove('active'); // Remove visual feedback
+                 activeMoveButton = null;
+            }
+        }
+
+
+        // --- Event Listeners ---
+        document.addEventListener('keydown', (event) => {
+            handlePlayerInput(event.key);
+             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); }
+        });
+
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        if (isTouchDevice) {
+            mobileControlsContainer.style.display = 'grid';
+
+            const buttons = [
+                { id: 'btn-up', direction: 'ArrowUp' },
+                { id: 'btn-down', direction: 'ArrowDown' },
+                { id: 'btn-left', direction: 'ArrowLeft' },
+                { id: 'btn-right', direction: 'ArrowRight' }
+            ];
+
+            buttons.forEach(btnInfo => {
+                const buttonElement = document.getElementById(btnInfo.id);
+                if(buttonElement) {
+                    buttonElement.addEventListener('touchstart', (e) => {
+                        e.preventDefault(); // Prevent default actions like scrolling/zoom
+                        startPlayerMove(buttonElement, btnInfo.direction);
+                    }, { passive: false }); // Need active listener to preventDefault
+
+                     // Add touchend listener to the specific button
+                     buttonElement.addEventListener('touchend', (e) => {
+                         e.preventDefault(); // Prevent potential ghost clicks
+                         stopPlayerMove();
+                     });
+                     // Also stop if touch leaves the button element
+                     buttonElement.addEventListener('touchleave', (e) => {
+                         // Only stop if the touch didn't end on this specific button already
+                         if (activeMoveButton === buttonElement) {
+                             stopPlayerMove();
+                         }
+                     });
+                }
+            });
+
+             // Global listener to catch touches ending anywhere else
+            document.addEventListener('touchend', stopPlayerMove);
+            document.addEventListener('touchcancel', stopPlayerMove);
+
+        } else { messageElement.textContent = 'Use Arrow Keys to Play'; }
+
+        // Prevent body scroll on touch devices more reliably
+        document.body.addEventListener('touchmove', function(event) { event.preventDefault(); }, { passive: false });
+
+        // --- Start Game ---
+         window.addEventListener('load', () => {
+            requestAnimationFrame(initGame);
+        });
+
+        // --- Resize Handling ---
+         let resizeTimeout;
+         window.addEventListener('resize', () => {
+             clearTimeout(resizeTimeout);
+             resizeTimeout = setTimeout(() => {
+                 console.log("Resizing... Recalculating layout.");
+                 // Re-initialize the current level with new dimensions
+                 // Crucially, stop intervals before re-init
+                 if (foodMoveInterval) { clearInterval(foodMoveInterval); foodMoveInterval = null; }
+                 if (playerMoveInterval) { clearInterval(playerMoveInterval); playerMoveInterval = null; }
+                 activeMoveButton = null; // Reset held button state
+                 // Clear visual feedback if any button was active
+                 document.querySelectorAll('.mobile-btn.active').forEach(btn => btn.classList.remove('active'));
+
+                 requestAnimationFrame(initGame); // Re-run init after a short delay
+             }, 250);
+         });
+
+    </script>
+
+</body>
+</html>
