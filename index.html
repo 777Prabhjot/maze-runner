@@ -17,7 +17,7 @@
             /* Size set by JS */
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
             display: flex; justify-content: center; align-items: center; /* Still useful if board aspect != container aspect */
-            margin-bottom: 5px;
+            margin-bottom: 100px;
             flex-shrink: 1; /* Allow shrinking if needed */
             flex-grow: 0; /* Don't grow beyond calculated size */
         }
@@ -45,11 +45,11 @@
         }
         #message {
             font-size: 0.9em; color: green; font-weight: bold; height: 1.1em; text-align: center; width: 100%;
-            position: fixed; bottom: 150px; left: 0; z-index: 99;
+            position: fixed; bottom: 220px; left: 0; z-index: 99;
         }
 
         /* --- Mobile Controls (remain the same) --- */
-        #mobile-controls { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); width: 140px; height: 140px; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 4px; z-index: 100; opacity: 0.8; display: none; }
+        #mobile-controls { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); width: 185px; height: 180px; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 4px; z-index: 100; opacity: 0.8; display: none; }
         .mobile-btn { background-color: #555; color: white; border: 1px solid #333; border-radius: 10px; font-size: 1.6em; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
         #btn-up { grid-column: 2; grid-row: 1; } #btn-left { grid-column: 1; grid-row: 2; } #btn-right { grid-column: 3; grid-row: 2; } #btn-down { grid-column: 2; grid-row: 3; }
         .mobile-btn.active, .mobile-btn:active { background-color: #888; transform: scale(0.95); }
